@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"github.com/aws/aws-xray-sdk-go/xray"
 	"os"
 	"time"
 
@@ -25,19 +27,22 @@ func main() {
 		return
 	}
 
+	ctx, segment := xray.BeginSegment(context.Background(), "Example-GetConfiguration")
+	defer segment.Close(nil)
+
 	configurationName := fmt.Sprintf("get-configuration-%d", time.Now().Unix())
-	createConfiguration(configurationName)
-	getConfiguration(configurationName)
-	deleteConfiguration(configurationName)
+	createConfiguration(ctx, configurationName)
+	getConfiguration(ctx, configurationName)
+	deleteConfiguration(ctx, configurationName)
 }
 
-func createConfiguration(configurationName string) {
+func createConfiguration(ctx context.Context, configurationName string) {
 	appConfigAdvance, err := appconfigadvance.NewWithApplicationName(applicationName)
 	if err != nil {
 		panic(err)
 	}
 
-	ok, err := appConfigAdvance.CreateConfiguration(configurationName, time.Now().Format(time.RFC3339))
+	ok, err := appConfigAdvance.CreateConfiguration(ctx, configurationName, time.Now().Format(time.RFC3339))
 	if err != nil {
 		panic(err)
 	}
@@ -45,7 +50,7 @@ func createConfiguration(configurationName string) {
 	logger.Info("CreateConfiguration ", configurationName, " ", ok)
 }
 
-func getConfiguration(configurationName string) {
+func getConfiguration(ctx context.Context, configurationName string) {
 	appConfig, err := appconfig.NewWithOptions(
 		appconfig.WithApplicationName(applicationName),
 		appconfig.WithCacheRefreshInterval(time.Second*30),
@@ -55,7 +60,7 @@ func getConfiguration(configurationName string) {
 		panic(err)
 	}
 
-	content, err := appConfig.GetConfiguration(configurationName)
+	content, err := appConfig.GetConfiguration(ctx, configurationName)
 	if err != nil {
 		logger.Error(err)
 	} else {
@@ -63,13 +68,13 @@ func getConfiguration(configurationName string) {
 	}
 }
 
-func deleteConfiguration(configurationName string) {
+func deleteConfiguration(ctx context.Context, configurationName string) {
 	appConfigAdvance, err := appconfigadvance.NewWithApplicationName(applicationName)
 	if err != nil {
 		panic(err)
 	}
 
-	ok, err := appConfigAdvance.DeleteConfiguration(configurationName)
+	ok, err := appConfigAdvance.DeleteConfiguration(ctx, configurationName)
 	if err != nil {
 		panic(err)
 	}

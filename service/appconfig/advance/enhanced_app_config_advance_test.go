@@ -1,6 +1,7 @@
 package appconfigadvance
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -16,8 +17,26 @@ var regionName = "us-east-1"
 var applicationName = "app1"
 var environmentName = "Test"
 
+func TestMain(m *testing.M) {
+	// Write code here to run before tests
+	err := os.Setenv("AWS_XRAY_SDK_DISABLED", "true")
+	if err != nil {
+		panic(err)
+	}
+
+	// Run tests
+	exitVal := m.Run()
+
+	// Write code here to run after tests
+
+	// Exit with exit value from tests
+	os.Exit(exitVal)
+}
+
 func TestAppConfigAdvance(t *testing.T) {
 	setEnvs(t)
+
+	ctx := context.Background()
 
 	appConfig, err := appconfig.NewWithOptions(
 		appconfig.WithApplicationName(applicationName),
@@ -29,17 +48,17 @@ func TestAppConfigAdvance(t *testing.T) {
 	assert.Nil(t, err)
 
 	configurationName := fmt.Sprintf("TestAppConfigAdvance-%d", time.Now().Unix())
-	testCreate(t, appConfig, appConfigAdvance, configurationName)
-	testUpdate(t, appConfig, appConfigAdvance, configurationName)
-	testDelete(t, appConfig, appConfigAdvance, configurationName)
+	testCreate(ctx, t, appConfig, appConfigAdvance, configurationName)
+	testUpdate(ctx, t, appConfig, appConfigAdvance, configurationName)
+	testDelete(ctx, t, appConfig, appConfigAdvance, configurationName)
 }
 
-func testDelete(t *testing.T, appConfig *appconfig.EnhancedAppConfig, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) {
+func testDelete(ctx context.Context, t *testing.T, appConfig *appconfig.EnhancedAppConfig, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) {
 	t.Log("start testDelete")
-	deleteAppConfig(t, appConfigAdvance, configurationName)
+	deleteAppConfig(ctx, t, appConfigAdvance, configurationName)
 	now := time.Now()
 	for i := 1; ; i++ {
-		_, err := appConfig.GetConfiguration(configurationName)
+		_, err := appConfig.GetConfiguration(ctx, configurationName)
 		if err == nil {
 			//t.Log("expected err but got nil")
 		} else {
@@ -56,12 +75,12 @@ func testDelete(t *testing.T, appConfig *appconfig.EnhancedAppConfig, appConfigA
 	t.Log("end testDelete")
 }
 
-func testUpdate(t *testing.T, appConfig *appconfig.EnhancedAppConfig, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) time.Time {
+func testUpdate(ctx context.Context, t *testing.T, appConfig *appconfig.EnhancedAppConfig, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) time.Time {
 	t.Log("start testUpdate")
-	updateContent := update(t, appConfigAdvance, configurationName)
+	updateContent := update(ctx, t, appConfigAdvance, configurationName)
 	now := time.Now()
 	for i := 1; ; i++ {
-		getContent := get(t, appConfig, configurationName)
+		getContent := get(ctx, t, appConfig, configurationName)
 		if getContent != updateContent {
 			//t.Log("expected ", updateContent, " but got ", getContent)
 		} else {
@@ -76,12 +95,12 @@ func testUpdate(t *testing.T, appConfig *appconfig.EnhancedAppConfig, appConfigA
 	return now
 }
 
-func testCreate(t *testing.T, appConfig *appconfig.EnhancedAppConfig, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) time.Time {
+func testCreate(ctx context.Context, t *testing.T, appConfig *appconfig.EnhancedAppConfig, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) time.Time {
 	t.Log("start testCreate")
-	createContent := create(t, appConfigAdvance, configurationName)
+	createContent := create(ctx, t, appConfigAdvance, configurationName)
 	now := time.Now()
 	for i := 1; ; i++ {
-		getContent := get(t, appConfig, configurationName)
+		getContent := get(ctx, t, appConfig, configurationName)
 		if createContent != getContent {
 			t.Log("expected ", createContent, " but got ", getContent)
 		} else {
@@ -94,30 +113,30 @@ func testCreate(t *testing.T, appConfig *appconfig.EnhancedAppConfig, appConfigA
 	return now
 }
 
-func create(t *testing.T, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) string {
+func create(ctx context.Context, t *testing.T, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) string {
 	content := time.Now().Format(time.RFC3339)
-	isSuccess, err := appConfigAdvance.CreateConfiguration(configurationName, content)
+	isSuccess, err := appConfigAdvance.CreateConfiguration(ctx, configurationName, content)
 	assert.Nil(t, err)
 	assert.True(t, isSuccess)
 	return content
 
 }
-func get(t *testing.T, appConfig *appconfig.EnhancedAppConfig, configurationName string) string {
-	content, err := appConfig.GetConfiguration(configurationName)
+func get(ctx context.Context, t *testing.T, appConfig *appconfig.EnhancedAppConfig, configurationName string) string {
+	content, err := appConfig.GetConfiguration(ctx, configurationName)
 	assert.Nil(t, err)
 	return content
 }
 
-func update(t *testing.T, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) string {
+func update(ctx context.Context, t *testing.T, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) string {
 	updateContent := time.Now().Format(time.RFC3339)
-	isSuccess, err := appConfigAdvance.UpdateConfiguration(configurationName, updateContent)
+	isSuccess, err := appConfigAdvance.UpdateConfiguration(ctx, configurationName, updateContent)
 	assert.Nil(t, err)
 	assert.True(t, isSuccess)
 	return updateContent
 }
 
-func deleteAppConfig(t *testing.T, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) {
-	isSuccess, err := appConfigAdvance.DeleteConfiguration(configurationName)
+func deleteAppConfig(ctx context.Context, t *testing.T, appConfigAdvance *EnhancedAppConfigAdvance, configurationName string) {
+	isSuccess, err := appConfigAdvance.DeleteConfiguration(ctx, configurationName)
 	assert.Nil(t, err)
 	assert.True(t, isSuccess)
 }

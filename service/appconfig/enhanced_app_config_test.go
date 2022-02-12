@@ -1,6 +1,7 @@
 package appconfig
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -15,6 +16,22 @@ import (
 var regionName = "us-east-1"
 var applicationName = "app1"
 var environmentName = "Test"
+
+func TestMain(m *testing.M) {
+	// Write code here to run before tests
+	err := os.Setenv("AWS_XRAY_SDK_DISABLED", "true")
+	if err != nil {
+		panic(err)
+	}
+
+	// Run tests
+	exitVal := m.Run()
+
+	// Write code here to run after tests
+
+	// Exit with exit value from tests
+	os.Exit(exitVal)
+}
 
 func TestAppConfig_GetConfiguration(t *testing.T) {
 	type fields struct {
@@ -55,20 +72,20 @@ func TestAppConfig_GetConfiguration(t *testing.T) {
 			assert.Nil(t, err)
 
 			// 新增
-			isSuccess, err := appConfigAdvance.CreateConfiguration(tt.args.configurationName, tt.want)
+			isSuccess, err := appConfigAdvance.CreateConfiguration(context.TODO(), tt.args.configurationName, tt.want)
 			assert.True(t, (err != nil) == tt.wantErr, "CreateConfiguration() error = %v, wantErr %v", err, tt.wantErr)
 			assert.True(t, isSuccess, "CreateConfiguration() fail")
 
 			time.Sleep(appConfig.cacheRefreshTicker.Interval() + appConfig.timeout)
 
 			// 查询，从缓存中获取
-			got, err := appConfig.GetConfiguration(tt.args.configurationName)
+			got, err := appConfig.GetConfiguration(context.TODO(), tt.args.configurationName)
 
 			assert.True(t, (err != nil) == tt.wantErr, "GetConfiguration() error = %v, wantErr %v", err, tt.wantErr)
 			assert.Equal(t, tt.want, got, "GetConfiguration() got = %v, want %v", got, tt.want)
 
 			// 删除
-			isSuccess, err = appConfigAdvance.DeleteConfiguration(tt.args.configurationName)
+			isSuccess, err = appConfigAdvance.DeleteConfiguration(context.TODO(), tt.args.configurationName)
 			assert.True(t, (err != nil) == tt.wantErr, "DeleteConfiguration() error = %v, wantErr %v", err, tt.wantErr)
 			assert.True(t, isSuccess, "DeleteConfiguration() fail")
 		})
@@ -115,17 +132,17 @@ func TestAppConfig_GetConfigurationIgnoreCache(t *testing.T) {
 
 			t.Log("configurationName: ", tt.args.configurationName)
 			// 新增
-			isSuccess, err := appConfigAdvance.CreateConfiguration(tt.args.configurationName, tt.want)
+			isSuccess, err := appConfigAdvance.CreateConfiguration(context.TODO(), tt.args.configurationName, tt.want)
 			assert.True(t, (err != nil) == tt.wantErr, "CreateConfiguration() error = %v, wantErr %v", err, tt.wantErr)
 			assert.True(t, isSuccess, "CreateConfiguration() fail")
 
 			// 查询，不从缓存中获取
-			got, err := appConfig.GetConfigurationIgnoreCache(tt.args.configurationName)
+			got, err := appConfig.GetConfigurationIgnoreCache(context.TODO(), tt.args.configurationName)
 			assert.True(t, (err != nil) == tt.wantErr, "GetConfiguration() error = %v, wantErr %v", err, tt.wantErr)
 			assert.Equal(t, tt.want, got, "GetConfiguration() got = %v, want %v", got, tt.want)
 
 			// 删除
-			isSuccess, err = appConfigAdvance.DeleteConfiguration(tt.args.configurationName)
+			isSuccess, err = appConfigAdvance.DeleteConfiguration(context.TODO(), tt.args.configurationName)
 			assert.True(t, (err != nil) == tt.wantErr, "DeleteConfiguration() error = %v, wantErr %v", err, tt.wantErr)
 			assert.True(t, isSuccess, "DeleteConfiguration() fail")
 		})
@@ -342,14 +359,14 @@ func createConfiguration(t *testing.T, configurationName string) {
 	)
 	assert.Nil(t, err)
 
-	isSuccess, err := appConfigAdvance.CreateConfiguration(configurationName, content)
+	isSuccess, err := appConfigAdvance.CreateConfiguration(context.TODO(), configurationName, content)
 	assert.Nil(t, err)
 
 	assert.True(t, isSuccess, "createConfiguration fail")
 }
 
 func getConfiguration(t *testing.T, appConfig *EnhancedAppConfig, configurationName string, isFromCache bool) {
-	configuration, err := appConfig.getEnhancedConfiguration(configurationName)
+	configuration, err := appConfig.getEnhancedConfiguration(context.TODO(), configurationName)
 	assert.Nil(t, err)
 	assert.Equal(t, isFromCache, configuration.isCache, "expected %v, but received %v", isFromCache, configuration.isCache)
 }
@@ -360,7 +377,7 @@ func deleteConfiguration(t *testing.T, configurationName string) {
 	)
 	assert.Nil(t, err)
 
-	isSuccess, err := appConfigAdvance.DeleteConfiguration(configurationName)
+	isSuccess, err := appConfigAdvance.DeleteConfiguration(context.TODO(), configurationName)
 	assert.Nil(t, err)
 
 	assert.True(t, isSuccess, "deleteConfiguration fail")

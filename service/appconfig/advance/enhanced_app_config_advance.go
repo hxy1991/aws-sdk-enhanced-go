@@ -1,6 +1,7 @@
 package appconfigadvance
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/appconfig"
+	"github.com/aws/aws-xray-sdk-go/xray"
 	"github.com/hxy1991/aws-sdk-enhanced-go/awsenhanced/constant"
 )
 
@@ -73,22 +75,25 @@ func NewWithOptions(opts ...Option) (*EnhancedAppConfigAdvance, error) {
 		}
 	}
 
-	err = appConfigAdvance.listApplications()
+	ctx, segment := xray.BeginSegment(context.Background(), "EnhancedAppConfigAdvance-NewWithOptions")
+	defer segment.Close(nil)
+
+	err = appConfigAdvance.listApplications(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	err = appConfigAdvance.listDeploymentStrategies()
+	err = appConfigAdvance.listDeploymentStrategies(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	err = appConfigAdvance.nameToId()
+	err = appConfigAdvance.nameToId(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	err = appConfigAdvance.listConfigurationProfiles()
+	err = appConfigAdvance.listConfigurationProfiles(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -111,12 +116,14 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) initAppConfigClient() error {
 		return errors.New("can not init aws AppConfig client")
 	}
 
+	xray.AWS(appConfigClient.Client)
+
 	appConfigAdvance.appConfigClient = appConfigClient
 	return nil
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) UpdateConfiguration(configurationName string, content string) (bool, error) {
-	configurationProfileId, found, err := appConfigAdvance.getConfigurationProfileId(configurationName)
+func (appConfigAdvance *EnhancedAppConfigAdvance) UpdateConfiguration(ctx context.Context, configurationName string, content string) (bool, error) {
+	configurationProfileId, found, err := appConfigAdvance.getConfigurationProfileId(ctx, configurationName)
 	if err != nil {
 		return false, err
 	}
@@ -126,27 +133,27 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) UpdateConfiguration(configurat
 	}
 
 	// 创建版本
-	createHostedConfigurationVersionOutput, err := appConfigAdvance.createHostedConfigurationVersion(configurationProfileId, content)
+	createHostedConfigurationVersionOutput, err := appConfigAdvance.createHostedConfigurationVersion(ctx, configurationProfileId, content)
 	if err != nil {
 		return false, err
 	}
 
 	// 发布版本
 	configurationVersion := fmt.Sprintf("%d", *createHostedConfigurationVersionOutput.VersionNumber)
-	startDeploymentOutput, err := appConfigAdvance.startDeployment(configurationProfileId, configurationVersion)
+	startDeploymentOutput, err := appConfigAdvance.startDeployment(ctx, configurationProfileId, configurationVersion)
 	if err != nil {
 		return false, err
 	}
 	return startDeploymentOutput != nil, nil
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) getConfigurationProfileId(configurationName string) (string, bool, error) {
+func (appConfigAdvance *EnhancedAppConfigAdvance) getConfigurationProfileId(ctx context.Context, configurationName string) (string, bool, error) {
 	configurationProfileId, found := configurationProfileNameId.Load(configurationName)
 	if found {
 		return configurationProfileId.(string), found, nil
 	}
 	// 再获取一次配置名称和ID的对应关系
-	err := appConfigAdvance.listConfigurationProfiles()
+	err := appConfigAdvance.listConfigurationProfiles(ctx)
 	if err != nil {
 		return "", false, err
 	}
@@ -159,8 +166,8 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) getConfigurationProfileId(conf
 	return "", false, nil
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) CreateConfiguration(configurationName string, content string) (bool, error) {
-	_, found, err := appConfigAdvance.getConfigurationProfileId(configurationName)
+func (appConfigAdvance *EnhancedAppConfigAdvance) CreateConfiguration(ctx context.Context, configurationName string, content string) (bool, error) {
+	_, found, err := appConfigAdvance.getConfigurationProfileId(ctx, configurationName)
 	if err != nil {
 		return false, err
 	}
@@ -171,21 +178,21 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) CreateConfiguration(configurat
 	}
 
 	// 创建配置 Profile
-	createConfigurationProfileOutput, err := appConfigAdvance.createConfigurationProfile(configurationName)
+	createConfigurationProfileOutput, err := appConfigAdvance.createConfigurationProfile(ctx, configurationName)
 	if err != nil {
 		return false, err
 	}
 	configurationProfileId := *createConfigurationProfileOutput.Id
 
 	// 创建版本
-	createHostedConfigurationVersionOutput, err := appConfigAdvance.createHostedConfigurationVersion(configurationProfileId, content)
+	createHostedConfigurationVersionOutput, err := appConfigAdvance.createHostedConfigurationVersion(ctx, configurationProfileId, content)
 	if err != nil {
 		return false, err
 	}
 
 	// 发布版本
 	configurationVersion := fmt.Sprintf("%d", *createHostedConfigurationVersionOutput.VersionNumber)
-	startDeploymentOutput, err := appConfigAdvance.startDeployment(configurationProfileId, configurationVersion)
+	startDeploymentOutput, err := appConfigAdvance.startDeployment(ctx, configurationProfileId, configurationVersion)
 	if err != nil {
 		return false, err
 	}
@@ -197,17 +204,17 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) CreateConfiguration(configurat
 	return startDeploymentOutput != nil, nil
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) createConfigurationProfile(configurationProfileName string) (*appconfig.CreateConfigurationProfileOutput, error) {
+func (appConfigAdvance *EnhancedAppConfigAdvance) createConfigurationProfile(ctx context.Context, configurationProfileName string) (*appconfig.CreateConfigurationProfileOutput, error) {
 	input := appconfig.CreateConfigurationProfileInput{
 		ApplicationId: aws.String(appConfigAdvance.applicationId),
 		// 目前只这种类型
 		LocationUri: aws.String("hosted"),
 		Name:        aws.String(configurationProfileName),
 	}
-	return appConfigAdvance.appConfigClient.CreateConfigurationProfile(&input)
+	return appConfigAdvance.appConfigClient.CreateConfigurationProfileWithContext(ctx, &input)
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) createHostedConfigurationVersion(configurationProfileId string, content string) (*appconfig.CreateHostedConfigurationVersionOutput, error) {
+func (appConfigAdvance *EnhancedAppConfigAdvance) createHostedConfigurationVersion(ctx context.Context, configurationProfileId string, content string) (*appconfig.CreateHostedConfigurationVersionOutput, error) {
 	contentType := http.DetectContentType([]byte(content))
 	input := appconfig.CreateHostedConfigurationVersionInput{
 		ApplicationId:          aws.String(appConfigAdvance.applicationId),
@@ -216,10 +223,10 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) createHostedConfigurationVersi
 		// text/plain; charset=UTF-8 只取 text/plain
 		ContentType: aws.String(strings.SplitN(contentType, "; ", 2)[0]),
 	}
-	return appConfigAdvance.appConfigClient.CreateHostedConfigurationVersion(&input)
+	return appConfigAdvance.appConfigClient.CreateHostedConfigurationVersionWithContext(ctx, &input)
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) startDeployment(configurationProfileId string, configurationVersion string) (*appconfig.StartDeploymentOutput, error) {
+func (appConfigAdvance *EnhancedAppConfigAdvance) startDeployment(ctx context.Context, configurationProfileId string, configurationVersion string) (*appconfig.StartDeploymentOutput, error) {
 	deploymentStrategyId, found := deploymentStrategyNameId.Load(deploymentStrategyName)
 	if !found {
 		msg := fmt.Sprintf("deploymentStrategy [%s] do not exist in [%s] application", deploymentStrategyName, appConfigAdvance.applicationName)
@@ -232,11 +239,11 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) startDeployment(configurationP
 		ConfigurationVersion:   aws.String(configurationVersion),
 		DeploymentStrategyId:   aws.String(deploymentStrategyId.(string)),
 	}
-	return appConfigAdvance.appConfigClient.StartDeployment(&input)
+	return appConfigAdvance.appConfigClient.StartDeploymentWithContext(ctx, &input)
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) DeleteConfiguration(configurationName string) (bool, error) {
-	configurationProfileId, found, err := appConfigAdvance.getConfigurationProfileId(configurationName)
+func (appConfigAdvance *EnhancedAppConfigAdvance) DeleteConfiguration(ctx context.Context, configurationName string) (bool, error) {
+	configurationProfileId, found, err := appConfigAdvance.getConfigurationProfileId(ctx, configurationName)
 	if err != nil {
 		return false, err
 	}
@@ -244,7 +251,7 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) DeleteConfiguration(configurat
 		msg := fmt.Sprintf("configuration [%s] do not exist in [%s] environment of [%s] application", configurationName, appConfigAdvance.environmentName, appConfigAdvance.applicationName)
 		return false, errors.New(msg)
 	}
-	output, err := appConfigAdvance.deleteConfigurationProfile(configurationProfileId)
+	output, err := appConfigAdvance.deleteConfigurationProfile(ctx, configurationProfileId)
 	if err != nil {
 		return false, err
 	}
@@ -256,8 +263,8 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) DeleteConfiguration(configurat
 	return output != nil, nil
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) deleteConfigurationProfile(configurationProfileId string) (*appconfig.DeleteConfigurationProfileOutput, error) {
-	err := appConfigAdvance.deleteAllConfigurationVersion(configurationProfileId)
+func (appConfigAdvance *EnhancedAppConfigAdvance) deleteConfigurationProfile(ctx context.Context, configurationProfileId string) (*appconfig.DeleteConfigurationProfileOutput, error) {
+	err := appConfigAdvance.deleteAllConfigurationVersion(ctx, configurationProfileId)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +273,7 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) deleteConfigurationProfile(con
 		ApplicationId:          aws.String(appConfigAdvance.applicationId),
 		ConfigurationProfileId: aws.String(configurationProfileId),
 	}
-	output, err := appConfigAdvance.appConfigClient.DeleteConfigurationProfile(&input)
+	output, err := appConfigAdvance.appConfigClient.DeleteConfigurationProfileWithContext(ctx, &input)
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +281,7 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) deleteConfigurationProfile(con
 	return output, nil
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) deleteAllConfigurationVersion(configurationProfileId string) error {
+func (appConfigAdvance *EnhancedAppConfigAdvance) deleteAllConfigurationVersion(ctx context.Context, configurationProfileId string) error {
 	var nextToken *string = nil
 	for {
 		listHostedConfigurationVersionsInput := appconfig.ListHostedConfigurationVersionsInput{
@@ -282,7 +289,7 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) deleteAllConfigurationVersion(
 			ConfigurationProfileId: aws.String(configurationProfileId),
 			NextToken:              nextToken,
 		}
-		listHostedConfigurationVersionsOutput, err := appConfigAdvance.appConfigClient.ListHostedConfigurationVersions(&listHostedConfigurationVersionsInput)
+		listHostedConfigurationVersionsOutput, err := appConfigAdvance.appConfigClient.ListHostedConfigurationVersionsWithContext(ctx, &listHostedConfigurationVersionsInput)
 		if err != nil {
 			return err
 		}
@@ -296,7 +303,7 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) deleteAllConfigurationVersion(
 				ConfigurationProfileId: item.ConfigurationProfileId,
 				VersionNumber:          item.VersionNumber,
 			}
-			output, err := appConfigAdvance.appConfigClient.DeleteHostedConfigurationVersion(&input)
+			output, err := appConfigAdvance.appConfigClient.DeleteHostedConfigurationVersionWithContext(ctx, &input)
 			if err != nil {
 				return err
 			}
@@ -314,13 +321,13 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) deleteAllConfigurationVersion(
 	return nil
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) nameToId() error {
+func (appConfigAdvance *EnhancedAppConfigAdvance) nameToId(ctx context.Context) error {
 	applicationId, found := applicationNameId[appConfigAdvance.applicationName]
 	if !found {
 		return fmt.Errorf("can not find application [%s]", appConfigAdvance.applicationName)
 	}
 
-	err := appConfigAdvance.listEnvironments(appConfigAdvance.appConfigClient, applicationId)
+	err := appConfigAdvance.listEnvironments(ctx, appConfigAdvance.appConfigClient, applicationId)
 	if err != nil {
 		return err
 	}
@@ -335,14 +342,14 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) nameToId() error {
 	return nil
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) listConfigurationProfiles() error {
+func (appConfigAdvance *EnhancedAppConfigAdvance) listConfigurationProfiles(ctx context.Context) error {
 	var nextToken *string = nil
 	for {
 		input := appconfig.ListConfigurationProfilesInput{
 			ApplicationId: aws.String(appConfigAdvance.applicationId),
 			NextToken:     nextToken,
 		}
-		output, err := appConfigAdvance.appConfigClient.ListConfigurationProfiles(&input)
+		output, err := appConfigAdvance.appConfigClient.ListConfigurationProfilesWithContext(ctx, &input)
 		if err != nil {
 			return err
 		}
@@ -362,13 +369,13 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) listConfigurationProfiles() er
 	return nil
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) listDeploymentStrategies() error {
+func (appConfigAdvance *EnhancedAppConfigAdvance) listDeploymentStrategies(ctx context.Context) error {
 	var nextToken *string = nil
 	for {
 		input := appconfig.ListDeploymentStrategiesInput{
 			NextToken: nextToken,
 		}
-		output, err := appConfigAdvance.appConfigClient.ListDeploymentStrategies(&input)
+		output, err := appConfigAdvance.appConfigClient.ListDeploymentStrategiesWithContext(ctx, &input)
 		if err != nil {
 			return err
 		}
@@ -388,13 +395,13 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) listDeploymentStrategies() err
 	return nil
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) listApplications() error {
+func (appConfigAdvance *EnhancedAppConfigAdvance) listApplications(ctx context.Context) error {
 	var nextToken *string = nil
 	for {
 		input := appconfig.ListApplicationsInput{
 			NextToken: nextToken,
 		}
-		output, err := appConfigAdvance.appConfigClient.ListApplications(&input)
+		output, err := appConfigAdvance.appConfigClient.ListApplicationsWithContext(ctx, &input)
 		if err != nil {
 			return err
 		}
@@ -414,14 +421,14 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) listApplications() error {
 	return nil
 }
 
-func (appConfigAdvance *EnhancedAppConfigAdvance) listEnvironments(appConfigClient *appconfig.AppConfig, applicationId string) error {
+func (appConfigAdvance *EnhancedAppConfigAdvance) listEnvironments(ctx context.Context, appConfigClient *appconfig.AppConfig, applicationId string) error {
 	var nextToken *string = nil
 	for {
 		input := appconfig.ListEnvironmentsInput{
 			ApplicationId: aws.String(applicationId),
 			NextToken:     nextToken,
 		}
-		output, err := appConfigClient.ListEnvironments(&input)
+		output, err := appConfigClient.ListEnvironmentsWithContext(ctx, &input)
 		if err != nil {
 			return err
 		}

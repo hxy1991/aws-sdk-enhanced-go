@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aws/aws-xray-sdk-go/xray"
 	"os"
 	"runtime/debug"
 	"strings"
@@ -125,6 +126,8 @@ func (appConfig *EnhancedAppConfig) initAppConfigClient() error {
 		return errors.New("can not init aws AppConfig client")
 	}
 
+	xray.AWS(appConfigClient.Client)
+
 	appConfig.appConfigClient = appConfigClient
 
 	return nil
@@ -132,13 +135,16 @@ func (appConfig *EnhancedAppConfig) initAppConfigClient() error {
 
 func (appConfig *EnhancedAppConfig) initRefreshCacheTicker() {
 	cacheRefreshFunc := func() {
+		ctx, segment := xray.BeginSegment(context.Background(), "EnhancedAppConfig-CacheRefresh")
+		defer segment.Close(nil)
+
 		startTime := time.Now()
 		logger.Debug("start refresh all the caches")
 		var refreshCacheWaitGroup sync.WaitGroup
 		for _, keyI := range appConfig.cache.Keys() {
 			refreshCacheWaitGroup.Add(1)
 			// 多协程并发获取
-			appConfig.refreshKey(&refreshCacheWaitGroup, keyI)
+			appConfig.refreshKey(ctx, &refreshCacheWaitGroup, keyI)
 		}
 		refreshCacheWaitGroup.Wait()
 		logger.Debug("end refresh all the caches, cost: ", time.Since(startTime))
@@ -148,7 +154,7 @@ func (appConfig *EnhancedAppConfig) initRefreshCacheTicker() {
 	appConfig.cacheRefreshTicker.Start()
 }
 
-func (appConfig *EnhancedAppConfig) refreshKey(refreshCacheWaitGroup *sync.WaitGroup, keyI interface{}) {
+func (appConfig *EnhancedAppConfig) refreshKey(ctx context.Context, refreshCacheWaitGroup *sync.WaitGroup, keyI interface{}) {
 	go func() {
 		defer func() {
 			refreshCacheWaitGroup.Done()
@@ -171,7 +177,7 @@ func (appConfig *EnhancedAppConfig) refreshKey(refreshCacheWaitGroup *sync.WaitG
 		}
 
 		clientConfigurationVersion := valueI.(*EnhancedConfiguration).clientConfigurationVersion
-		configuration, err := appConfig.getConfigurationWithVersion(key, clientConfigurationVersion)
+		configuration, err := appConfig.getConfigurationWithVersion(ctx, key, clientConfigurationVersion)
 		if err != nil {
 			if strings.Contains(err.Error(), "could not be found for account") {
 				logger.Warn("refresh cache [", key, "] fail, configuration profile not exist, ", err)
@@ -200,15 +206,15 @@ func (appConfig *EnhancedAppConfig) refreshKey(refreshCacheWaitGroup *sync.WaitG
 
 }
 
-func (appConfig *EnhancedAppConfig) GetConfiguration(configurationName string) (string, error) {
-	configuration, err := appConfig.getEnhancedConfiguration(configurationName)
+func (appConfig *EnhancedAppConfig) GetConfiguration(ctx context.Context, configurationName string) (string, error) {
+	configuration, err := appConfig.getEnhancedConfiguration(ctx, configurationName)
 	if err != nil {
 		return "", err
 	}
 	return *configuration.content, nil
 }
 
-func (appConfig *EnhancedAppConfig) getEnhancedConfiguration(configurationName string) (*EnhancedConfiguration, error) {
+func (appConfig *EnhancedAppConfig) getEnhancedConfiguration(ctx context.Context, configurationName string) (*EnhancedConfiguration, error) {
 	// get from cache if cache is on
 	if appConfig.cache != nil {
 		cacheValue, found := appConfig.cache.Get(configurationName)
@@ -222,7 +228,7 @@ func (appConfig *EnhancedAppConfig) getEnhancedConfiguration(configurationName s
 		}
 	}
 
-	configuration, err := appConfig.getConfigurationWithVersion(configurationName, nil)
+	configuration, err := appConfig.getConfigurationWithVersion(ctx, configurationName, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -247,8 +253,8 @@ func (appConfig *EnhancedAppConfig) getEnhancedConfiguration(configurationName s
 	}, nil
 }
 
-func (appConfig *EnhancedAppConfig) GetConfigurationIgnoreCache(configurationName string) (string, error) {
-	configuration, err := appConfig.getConfigurationWithVersion(configurationName, nil)
+func (appConfig *EnhancedAppConfig) GetConfigurationIgnoreCache(ctx context.Context, configurationName string) (string, error) {
+	configuration, err := appConfig.getConfigurationWithVersion(ctx, configurationName, nil)
 	if err != nil {
 		return "", err
 	}
@@ -262,8 +268,8 @@ func (appConfig *EnhancedAppConfig) GetConfigurationIgnoreCache(configurationNam
 	return *(configuration.content), err
 }
 
-func (appConfig *EnhancedAppConfig) getConfigurationWithVersion(configurationName string, configurationVersion *string) (*EnhancedConfiguration, error) {
-	configurationOutput, err := appConfig.getConfiguration(configurationName, configurationVersion)
+func (appConfig *EnhancedAppConfig) getConfigurationWithVersion(ctx context.Context, configurationName string, configurationVersion *string) (*EnhancedConfiguration, error) {
+	configurationOutput, err := appConfig.getConfiguration(ctx, configurationName, configurationVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +290,7 @@ func (appConfig *EnhancedAppConfig) getConfigurationWithVersion(configurationNam
 	return &configuration, nil
 }
 
-func (appConfig *EnhancedAppConfig) getConfiguration(configurationName string, configurationVersion *string) (*appconfig.GetConfigurationOutput, error) {
+func (appConfig *EnhancedAppConfig) getConfiguration(ctx context.Context, configurationName string, configurationVersion *string) (*appconfig.GetConfigurationOutput, error) {
 	input := appconfig.GetConfigurationInput{
 		Application:   aws.String(appConfig.applicationName),
 		Environment:   aws.String(appConfig.environmentName),
@@ -295,7 +301,7 @@ func (appConfig *EnhancedAppConfig) getConfiguration(configurationName string, c
 		input.ClientConfigurationVersion = configurationVersion
 	}
 	now := time.Now()
-	ctx, cancelFn := context.WithTimeout(context.Background(), appConfig.timeout)
+	ctx, cancelFn := context.WithTimeout(ctx, appConfig.timeout)
 	defer cancelFn()
 	configuration, err := appConfig.appConfigClient.GetConfigurationWithContext(ctx, &input)
 	//configuration, err := appConfigClient.GetConfiguration(&input)
