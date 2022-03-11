@@ -17,22 +17,6 @@ var regionName = "us-east-1"
 var applicationName = "app1"
 var environmentName = "Test"
 
-func TestMain(m *testing.M) {
-	// Write code here to run before tests
-	err := os.Setenv("AWS_XRAY_SDK_DISABLED", "true")
-	if err != nil {
-		panic(err)
-	}
-
-	// Run tests
-	exitVal := m.Run()
-
-	// Write code here to run after tests
-
-	// Exit with exit value from tests
-	os.Exit(exitVal)
-}
-
 func TestAppConfigAdvance(t *testing.T) {
 	setEnvs(t)
 

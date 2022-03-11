@@ -120,3 +120,16 @@ func WithTimeout(timeout time.Duration) Option {
 		return nil
 	})
 }
+
+func WithXRayEnable(isXRayEnable bool) Option {
+	return optionFunc(func(appConfig *EnhancedAppConfig) error {
+		appConfig.isXRayEnable = isXRayEnable
+
+		err := appConfig.initAppConfigClient()
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+}

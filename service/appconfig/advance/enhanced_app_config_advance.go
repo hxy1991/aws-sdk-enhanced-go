@@ -26,6 +26,8 @@ type EnhancedAppConfigAdvance struct {
 	applicationId   string
 	environmentId   string
 	appConfigClient *appconfig.AppConfig
+
+	isXRayEnable bool
 }
 
 var applicationNameId = map[string]string{}
@@ -75,8 +77,15 @@ func NewWithOptions(opts ...Option) (*EnhancedAppConfigAdvance, error) {
 		}
 	}
 
-	ctx, segment := xray.BeginSegment(context.Background(), "EnhancedAppConfigAdvance-NewWithOptions")
-	defer segment.Close(nil)
+	var ctx context.Context
+	if appConfigAdvance.isXRayEnable {
+		_ctx, segment := xray.BeginSegment(context.Background(), "EnhancedAppConfigAdvance-NewWithOptions")
+		defer segment.Close(nil)
+
+		ctx = _ctx
+	} else {
+		ctx = context.Background()
+	}
 
 	err = appConfigAdvance.listApplications(ctx)
 	if err != nil {
@@ -116,7 +125,9 @@ func (appConfigAdvance *EnhancedAppConfigAdvance) initAppConfigClient() error {
 		return errors.New("can not init aws AppConfig client")
 	}
 
-	xray.AWS(appConfigClient.Client)
+	if appConfigAdvance.isXRayEnable {
+		xray.AWS(appConfigClient.Client)
+	}
 
 	appConfigAdvance.appConfigClient = appConfigClient
 	return nil

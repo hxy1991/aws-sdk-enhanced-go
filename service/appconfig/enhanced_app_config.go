@@ -40,6 +40,8 @@ type EnhancedAppConfig struct {
 	cacheRefreshInterval time.Duration // 缓存刷新间隔
 	timeout              time.Duration // 获取配置的超时时间
 
+	isXRayEnable bool // 是否开启 X-Ray
+
 	appConfigClient    *appconfig.AppConfig
 	cache              *cache.Cache
 	cacheRefreshTicker *ticker.Ticker
@@ -126,7 +128,9 @@ func (appConfig *EnhancedAppConfig) initAppConfigClient() error {
 		return errors.New("can not init aws AppConfig client")
 	}
 
-	xray.AWS(appConfigClient.Client)
+	if appConfig.isXRayEnable {
+		xray.AWS(appConfigClient.Client)
+	}
 
 	appConfig.appConfigClient = appConfigClient
 
