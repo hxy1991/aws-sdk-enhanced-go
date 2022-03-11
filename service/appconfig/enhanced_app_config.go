@@ -139,8 +139,15 @@ func (appConfig *EnhancedAppConfig) initAppConfigClient() error {
 
 func (appConfig *EnhancedAppConfig) initRefreshCacheTicker() {
 	cacheRefreshFunc := func() {
-		ctx, segment := xray.BeginSegment(context.Background(), "EnhancedAppConfig-CacheRefresh")
-		defer segment.Close(nil)
+		var ctx context.Context
+		if appConfig.isXRayEnable {
+			_ctx, segment := xray.BeginSegment(context.Background(), "EnhancedAppConfig-CacheRefresh")
+			defer segment.Close(nil)
+
+			ctx = _ctx
+		} else {
+			ctx = context.Background()
+		}
 
 		startTime := time.Now()
 		logger.Debug("start refresh all the caches")
@@ -170,44 +177,48 @@ func (appConfig *EnhancedAppConfig) refreshKey(ctx context.Context, refreshCache
 		}()
 
 		key := keyI.(string)
-		logger.Debug("start refresh cache [", key, "]")
-		valueI, found := appConfig.cache.Get(key)
-		if !found {
-			return
-		}
-		if valueI == nil {
-			logger.Warn("refresh cache [", key, "] fail, valueI is nil, cache has been removed")
-			return
-		}
-
-		clientConfigurationVersion := valueI.(*EnhancedConfiguration).clientConfigurationVersion
-		configuration, err := appConfig.getConfigurationWithVersion(ctx, key, clientConfigurationVersion)
-		if err != nil {
-			if strings.Contains(err.Error(), "could not be found for account") {
-				logger.Warn("refresh cache [", key, "] fail, configuration profile not exist, ", err)
-				// 配置不存在了，删除缓存
-				appConfig.cache.Delete(key)
-				return
-			}
-			logger.Error("refresh cache [", key, "] error ", err)
-			return
-		}
-
-		if configuration == nil {
-			msg := fmt.Sprintf("get from aws app config failed [%s]", key)
-			logger.Error(msg)
-			return
-		}
-
-		if configuration.content == nil {
-			logger.Debug("cache not change of configuration [", key, "]")
-		} else {
-			logger.Warn("cache change of configuration [", key, "], new configuration version: ", *configuration.clientConfigurationVersion)
-			appConfig.cache.Add(key, configuration)
-		}
-		logger.Debug("end refresh cache [", key, "]")
+		appConfig.Refresh(ctx, key)
 	}()
 
+}
+
+func (appConfig *EnhancedAppConfig) Refresh(ctx context.Context, key string) {
+	logger.Debug("start refresh cache [", key, "]")
+	valueI, found := appConfig.cache.Get(key)
+	if !found {
+		return
+	}
+	if valueI == nil {
+		logger.Warn("refresh cache [", key, "] fail, valueI is nil, cache has been removed")
+		return
+	}
+
+	clientConfigurationVersion := valueI.(*EnhancedConfiguration).clientConfigurationVersion
+	configuration, err := appConfig.getConfigurationWithVersion(ctx, key, clientConfigurationVersion)
+	if err != nil {
+		if strings.Contains(err.Error(), "could not be found for account") {
+			logger.Warn("refresh cache [", key, "] fail, configuration profile not exist, ", err)
+			// 配置不存在了，删除缓存
+			appConfig.cache.Delete(key)
+			return
+		}
+		logger.Error("refresh cache [", key, "] error ", err)
+		return
+	}
+
+	if configuration == nil {
+		msg := fmt.Sprintf("get from aws app config failed [%s]", key)
+		logger.Error(msg)
+		return
+	}
+
+	if configuration.content == nil {
+		logger.Debug("cache not change of configuration [", key, "]")
+	} else {
+		logger.Warn("cache change of configuration [", key, "], new configuration version: ", *configuration.clientConfigurationVersion)
+		appConfig.cache.Add(key, configuration)
+	}
+	logger.Debug("end refresh cache [", key, "]")
 }
 
 func (appConfig *EnhancedAppConfig) GetConfiguration(ctx context.Context, configurationName string) (string, error) {
