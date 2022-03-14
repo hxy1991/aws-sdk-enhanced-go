@@ -69,7 +69,7 @@ func TestAppConfig_GetConfiguration(t *testing.T) {
 
 			enhancedConfiguration, err := appConfig.GetEnhancedConfiguration(context.TODO(), tt.args.configurationName)
 			assert.True(t, (err != nil) == tt.wantErr, "GetEnhancedConfiguration() error = %v, wantErr %v", err, tt.wantErr)
-			assert.True(t, enhancedConfiguration.isCache)
+			assert.True(t, enhancedConfiguration.IsCache)
 
 			// 删除
 			isSuccess, err = appConfigAdvance.DeleteConfiguration(context.TODO(), tt.args.configurationName)
@@ -355,7 +355,7 @@ func createConfiguration(t *testing.T, configurationName string) {
 func getConfiguration(t *testing.T, appConfig *EnhancedAppConfig, configurationName string, isFromCache bool) {
 	configuration, err := appConfig.GetEnhancedConfiguration(context.TODO(), configurationName)
 	assert.Nil(t, err)
-	assert.Equal(t, isFromCache, configuration.isCache, "expected %v, but received %v", isFromCache, configuration.isCache)
+	assert.Equal(t, isFromCache, configuration.IsCache, "expected %v, but received %v", isFromCache, configuration.IsCache)
 }
 
 func deleteConfiguration(t *testing.T, configurationName string) {

@@ -48,9 +48,9 @@ type EnhancedAppConfig struct {
 }
 
 type EnhancedConfiguration struct {
-	clientConfigurationVersion *string
-	content                    *string
-	isCache                    bool
+	ClientConfigurationVersion *string
+	Content                    *string
+	IsCache                    bool
 }
 
 func NewWithApplicationName(applicationName string) (*EnhancedAppConfig, error) {
@@ -193,7 +193,7 @@ func (appConfig *EnhancedAppConfig) Refresh(ctx context.Context, key string) {
 		return
 	}
 
-	clientConfigurationVersion := valueI.(*EnhancedConfiguration).clientConfigurationVersion
+	clientConfigurationVersion := valueI.(*EnhancedConfiguration).ClientConfigurationVersion
 	configuration, err := appConfig.getConfigurationWithVersion(ctx, key, clientConfigurationVersion)
 	if err != nil {
 		if strings.Contains(err.Error(), "could not be found for account") {
@@ -212,10 +212,10 @@ func (appConfig *EnhancedAppConfig) Refresh(ctx context.Context, key string) {
 		return
 	}
 
-	if configuration.content == nil {
+	if configuration.Content == nil {
 		logger.Debug("cache not change of configuration [", key, "]")
 	} else {
-		logger.Warn("cache change of configuration [", key, "], new configuration version: ", *configuration.clientConfigurationVersion)
+		logger.Warn("cache change of configuration [", key, "], new configuration version: ", *configuration.ClientConfigurationVersion)
 		appConfig.cache.Add(key, configuration)
 	}
 	logger.Debug("end refresh cache [", key, "]")
@@ -226,7 +226,7 @@ func (appConfig *EnhancedAppConfig) GetConfiguration(ctx context.Context, config
 	if err != nil {
 		return "", err
 	}
-	return *configuration.content, nil
+	return *configuration.Content, nil
 }
 
 func (appConfig *EnhancedAppConfig) GetEnhancedConfiguration(ctx context.Context, configurationName string) (*EnhancedConfiguration, error) {
@@ -248,7 +248,7 @@ func (appConfig *EnhancedAppConfig) GetEnhancedConfiguration(ctx context.Context
 		return nil, err
 	}
 
-	if configuration == nil || configuration.content == nil {
+	if configuration == nil || configuration.Content == nil {
 		msg := fmt.Sprintf("get from aws app config failed [%s]", configurationName)
 		logger.Error(msg)
 		return nil, errors.New(msg)
@@ -257,14 +257,14 @@ func (appConfig *EnhancedAppConfig) GetEnhancedConfiguration(ctx context.Context
 	// add to cache if cache is on
 	if appConfig.cache != nil {
 		logger.Debug("add to cache ", configurationName)
-		configuration.isCache = true
+		configuration.IsCache = true
 		appConfig.cache.Add(configurationName, configuration)
 	}
 
 	return &EnhancedConfiguration{
-		clientConfigurationVersion: configuration.clientConfigurationVersion,
-		content:                    configuration.content,
-		isCache:                    false,
+		ClientConfigurationVersion: configuration.ClientConfigurationVersion,
+		Content:                    configuration.Content,
+		IsCache:                    false,
 	}, nil
 }
 
@@ -274,13 +274,13 @@ func (appConfig *EnhancedAppConfig) GetConfigurationIgnoreCache(ctx context.Cont
 		return "", err
 	}
 
-	if configuration == nil || configuration.content == nil {
+	if configuration == nil || configuration.Content == nil {
 		msg := fmt.Sprintf("get from aws app config failed [%s]", configurationName)
 		logger.Error(msg)
 		return "", errors.New(msg)
 	}
 
-	return *(configuration.content), err
+	return *(configuration.Content), err
 }
 
 func (appConfig *EnhancedAppConfig) getConfigurationWithVersion(ctx context.Context, configurationName string, configurationVersion *string) (*EnhancedConfiguration, error) {
@@ -291,16 +291,16 @@ func (appConfig *EnhancedAppConfig) getConfigurationWithVersion(ctx context.Cont
 
 	if len(configurationOutput.Content) == 0 {
 		configuration := EnhancedConfiguration{
-			clientConfigurationVersion: configurationOutput.ConfigurationVersion,
-			content:                    nil,
+			ClientConfigurationVersion: configurationOutput.ConfigurationVersion,
+			Content:                    nil,
 		}
 		return &configuration, nil
 	}
 
 	content := string(configurationOutput.Content)
 	configuration := EnhancedConfiguration{
-		clientConfigurationVersion: configurationOutput.ConfigurationVersion,
-		content:                    &content,
+		ClientConfigurationVersion: configurationOutput.ConfigurationVersion,
+		Content:                    &content,
 	}
 	return &configuration, nil
 }
