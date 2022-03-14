@@ -222,14 +222,14 @@ func (appConfig *EnhancedAppConfig) Refresh(ctx context.Context, key string) {
 }
 
 func (appConfig *EnhancedAppConfig) GetConfiguration(ctx context.Context, configurationName string) (string, error) {
-	configuration, err := appConfig.getEnhancedConfiguration(ctx, configurationName)
+	configuration, err := appConfig.GetEnhancedConfiguration(ctx, configurationName)
 	if err != nil {
 		return "", err
 	}
 	return *configuration.content, nil
 }
 
-func (appConfig *EnhancedAppConfig) getEnhancedConfiguration(ctx context.Context, configurationName string) (*EnhancedConfiguration, error) {
+func (appConfig *EnhancedAppConfig) GetEnhancedConfiguration(ctx context.Context, configurationName string) (*EnhancedConfiguration, error) {
 	// get from cache if cache is on
 	if appConfig.cache != nil {
 		cacheValue, found := appConfig.cache.Get(configurationName)

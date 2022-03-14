@@ -64,9 +64,12 @@ func TestAppConfig_GetConfiguration(t *testing.T) {
 
 			// 查询，从缓存中获取
 			got, err := appConfig.GetConfiguration(context.TODO(), tt.args.configurationName)
-
 			assert.True(t, (err != nil) == tt.wantErr, "GetConfiguration() error = %v, wantErr %v", err, tt.wantErr)
 			assert.Equal(t, tt.want, got, "GetConfiguration() got = %v, want %v", got, tt.want)
+
+			enhancedConfiguration, err := appConfig.GetEnhancedConfiguration(context.TODO(), tt.args.configurationName)
+			assert.True(t, (err != nil) == tt.wantErr, "GetEnhancedConfiguration() error = %v, wantErr %v", err, tt.wantErr)
+			assert.True(t, enhancedConfiguration.isCache)
 
 			// 删除
 			isSuccess, err = appConfigAdvance.DeleteConfiguration(context.TODO(), tt.args.configurationName)
@@ -350,7 +353,7 @@ func createConfiguration(t *testing.T, configurationName string) {
 }
 
 func getConfiguration(t *testing.T, appConfig *EnhancedAppConfig, configurationName string, isFromCache bool) {
-	configuration, err := appConfig.getEnhancedConfiguration(context.TODO(), configurationName)
+	configuration, err := appConfig.GetEnhancedConfiguration(context.TODO(), configurationName)
 	assert.Nil(t, err)
 	assert.Equal(t, isFromCache, configuration.isCache, "expected %v, but received %v", isFromCache, configuration.isCache)
 }
