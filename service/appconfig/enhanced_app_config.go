@@ -236,7 +236,6 @@ func (appConfig *EnhancedAppConfig) GetEnhancedConfiguration(ctx context.Context
 		if found {
 			if cacheValue != nil {
 				configuration := cacheValue.(*EnhancedConfiguration)
-				logger.Debug("get configuration from cache successfully ", configurationName)
 				return configuration, nil
 			}
 			logger.Warn("get configuration from cache, but the value of cache is nil ", configurationName)
