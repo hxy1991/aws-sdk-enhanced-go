@@ -282,6 +282,25 @@ func (appConfig *EnhancedAppConfig) GetConfigurationIgnoreCache(ctx context.Cont
 	return *(configuration.Content), err
 }
 
+func (appConfig *EnhancedAppConfig) GetEnhancedConfigurationIgnoreCache(ctx context.Context, configurationName string) (*EnhancedConfiguration, error) {
+	configuration, err := appConfig.getConfigurationWithVersion(ctx, configurationName, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if configuration == nil || configuration.Content == nil {
+		msg := fmt.Sprintf("get from aws app config failed [%s]", configurationName)
+		logger.Error(msg)
+		return nil, errors.New(msg)
+	}
+
+	return &EnhancedConfiguration{
+		ClientConfigurationVersion: configuration.ClientConfigurationVersion,
+		Content:                    configuration.Content,
+		IsCache:                    false,
+	}, nil
+}
+
 func (appConfig *EnhancedAppConfig) getConfigurationWithVersion(ctx context.Context, configurationName string, configurationVersion *string) (*EnhancedConfiguration, error) {
 	configurationOutput, err := appConfig.getConfiguration(ctx, configurationName, configurationVersion)
 	if err != nil {
